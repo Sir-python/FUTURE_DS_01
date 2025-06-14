@@ -76,3 +76,24 @@ def aggregate_time_series(
         result['hashtags'] = ts_tags
 
     return result
+
+def aggregate_hashtag_time_series(df_h, timestamp_col='Timestamp', hashtag_col='hashtag', freq='D', window=7, k_sigma=2.0):
+    """
+    Aggregates daily usage of hashtags and detects spikes based on sigma rule.
+    """
+    df_h = df_h.copy()
+    df_h[timestamp_col] = pd.to_datetime(df_h[timestamp_col])
+
+    # Group by date and hashtag
+    df_h['date'] = df_h[timestamp_col].dt.floor(freq)
+    ts_hashtags = df_h.groupby(['date', hashtag_col]).size().reset_index(name='uses')
+    
+    # Rolling statistics for spike detection
+    ts_hashtags = ts_hashtags.sort_values(['hashtag', 'date'])
+    ts_hashtags['rolling_mean'] = ts_hashtags.groupby(hashtag_col)['uses'].transform(lambda x: x.rolling(window, min_periods=1).mean())
+    ts_hashtags['rolling_std']  = ts_hashtags.groupby(hashtag_col)['uses'].transform(lambda x: x.rolling(window, min_periods=1).std().fillna(0))
+    
+    # Spike detection
+    ts_hashtags['is_spike'] = ts_hashtags['uses'] > (ts_hashtags['rolling_mean'] + k_sigma * ts_hashtags['rolling_std'])
+
+    return ts_hashtags
